@@ -1,39 +1,40 @@
 import streamlit as st
-import pandas as pd
-import plotly.express as px
+from models.activities import load_activities, latest_n, top3_by, prepare_chart_source
+from views.tables import show_table, show_title
+from views.chart import activity_distance_bar
+from config import LATEST_N
 
-# CSVファイルを読み込み
-df = pd.read_csv("tmp_csv/activities.csv")
+# キャッシュ：I/Oコストや再計算を抑制
+@st.cache_data(show_spinner=False)
+def _load_df():
+    return load_activities()
 
-st.title("Strava activities")
+def main():
+    show_title("Strava activities")
 
+    # Data
+    df_all = _load_df()
+    df_latest = latest_n(df_all, LATEST_N)
 
-### Top 3 distance activities
-top3 = df.sort_values(by="distance", ascending=False).head(3)
-st.subheader("Top 3 distance activities (Latest 30 activities)")
-st.dataframe(top3)
+    # Top 3 distance
+    top3_distance = top3_by(df_latest, "distance")
+    show_table(f"Top 3 distance activities (Latest {LATEST_N} activities)", top3_distance)
 
+    # Top 3 elevation
+    top3_elev = top3_by(df_latest, "total_elevation_gain")
+    show_table(f"Top 3 total_elevation_gain activities (Latest {LATEST_N} activities)", top3_elev)
 
-### Top 3 total_elevation_gain activities
-top3_elevation = df.sort_values(by="total_elevation_gain", ascending=False).head(3)
-st.subheader("Top 3 total_elevation_gain activities (Latest 30 activities)")
-st.dataframe(top3_elevation)
+    # Top 3 max heartrate
+    # max_heartrate が欠損あり得るので NaN 対策（必要なら fillna(-inf) 等）
+    top3_hr = top3_by(df_latest.dropna(subset=["max_heartrate"]), "max_heartrate")
+    show_table(f"Top 3 max heartrate activities (Latest {LATEST_N} activities)", top3_hr)
 
+    # Chart
+    chart_df = prepare_chart_source(df_latest)
+    activity_distance_bar(chart_df, "Each Activity Distance")
 
-### Each Activity Distance graph
-st.subheader("Each Activity Distance")
-fig = px.bar(
-    df,
-    x="start_date_local",
-    y="distance",
-    color="name",
-    title="Each Activity Distance",
-    barmode="group"
-)
-fig.update_traces(width=3.5)
-st.plotly_chart(fig)
+    # All activities
+    show_table(f"Latest {LATEST_N} activities", df_latest)
 
-
-### All activities
-st.subheader("Latest 30 activities")
-st.dataframe(df)
+if __name__ == "__main__":
+    main()
