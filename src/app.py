@@ -1,7 +1,8 @@
 import streamlit as st
-from models.activities import load_activities, latest_n, top3_by, prepare_chart_source
+from models.activities import load_activities, latest_n, top3_by, prepare_chart_source, prepare_summary_source
 from views.tables import show_table, show_title
 from views.chart import activity_distance_bar
+from views.summary import show_summary
 from config import LATEST_N
 
 # キャッシュ：I/Oコストや再計算を抑制
@@ -32,6 +33,10 @@ def main():
     # Chart
     chart_df = prepare_chart_source(df_latest)
     activity_distance_bar(chart_df, "Each Activity Distance")
+
+    # Summary
+    summary_df = prepare_summary_source(df_latest)
+    show_summary("Summary(Total Distance and Elevation)", summary_df)
 
     # All activities
     show_table(f"Latest {LATEST_N} activities", df_latest)
