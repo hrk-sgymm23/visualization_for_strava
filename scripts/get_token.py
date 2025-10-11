@@ -1,11 +1,10 @@
 # FYI: https://qiita.com/tatsuki-tsuchiyama/items/fb15145029e5e7318bec
 import requests
-# from python_dotenv import load_dotenv
 from dotenv import load_dotenv
+import os
+import json
 
 load_dotenv()
-import os
-
 client_id = "179010"
 client_secret = os.environ["STRAVA_CLIENT_SECRET"]
 redirect_uri = "http://localhost/exchange_token"
@@ -34,4 +33,8 @@ token = requests.post(
 )
 
 strava_token = token.json()
+
+with open("strava_tokens.json", "w") as f:
+    json.dump(strava_token, f, indent=2)
+
 print(".envにアクセストークンを追加する", strava_token["access_token"])
