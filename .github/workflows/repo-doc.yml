@@ -5,7 +5,7 @@ on:
     - cron: "0 2 * * *"  # 毎日2時
   push:
     branches:
-      - 'feat/merge_script'
+      - 'feat/merge_scripts'
   workflow_dispatch:     # 手動実行も可
 
 jobs:
