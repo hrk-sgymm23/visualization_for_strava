@@ -35,7 +35,6 @@ else:
 openai_key = os.getenv("OPENAI_API_KEY")
 if not openai_key:
     raise RuntimeError("❌ OPENAI_API_KEY が見つかりません。環境変数または .env を確認してください。")
-
 client = OpenAI(api_key=openai_key)
 
 
