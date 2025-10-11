@@ -5,10 +5,41 @@ from anytree import Node, RenderTree
 from openai import OpenAI
 from dotenv import load_dotenv
 
-load_dotenv()
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# ============================
+# 🌍 実行環境の自動判別
+# ============================
+platform = os.getenv("PLATFORM")
 
-# 🌲 ツリー構造の生成
+if not platform:
+    if os.getenv("GITHUB_ACTIONS") == "true":
+        platform = "github"
+    elif os.getenv("GITLAB_CI") == "true":
+        platform = "gitlab"
+    else:
+        platform = "local"
+
+print(f"🧭 実行環境を自動判別しました → PLATFORM={platform}")
+
+# ============================
+# 📦 環境変数読み込み
+# ============================
+if platform == "local":
+    load_dotenv()
+    print("🧪 .env から環境変数を読み込みました")
+else:
+    print(f"🚀 {platform} 環境で実行中（Secrets / CI Variables から取得）")
+
+# ============================
+# 🤖 OpenAI クライアント初期化
+# ============================
+openai_key = os.getenv("OPENAI_API_KEY")
+if not openai_key:
+    raise RuntimeError("❌ OPENAI_API_KEY が見つかりません。環境変数または .env を確認してください。")
+
+client = OpenAI(api_key=openai_key)
+
+
+# 🌲 ディレクトリツリー構造を作成
 def build_tree(base_dir="."):
     root = Node(".")
     nodes = {".": root}
@@ -24,14 +55,10 @@ def build_tree(base_dir="."):
             Node(os.path.join(rel_path, f), parent=current_node)
     return root
 
-# 📄 コード抜粋収集
+
+# 📄 コード抜粋収集（多言語対応）
 def collect_code_info():
-    """
-    複数言語対応のコードスキャン関数。
-    各対象ファイルの先頭数行を抜粋してAIに渡す。
-    """
     result = []
-    # 対象拡張子の一覧
     target_exts = [
         ".py", ".sh", ".yaml", ".yml", ".json",
         ".js", ".ts", ".go", ".rb", ".java",
@@ -42,32 +69,26 @@ def collect_code_info():
         if ".git" in dirpath or "wiki" in dirpath:
             continue
 
-        # 対象拡張子のファイルを抽出
         target_files = [f for f in filenames if any(f.endswith(ext) for ext in target_exts)]
         if not target_files:
             continue
 
         section = {"path": dirpath, "files": []}
-
         for f in target_files:
             path = os.path.join(dirpath, f)
             try:
                 with open(path, "r", encoding="utf-8", errors="ignore") as fp:
-                    # 各ファイルの先頭数行だけを抜粋
                     lines = fp.readlines()
-                    # 構成ファイルは多めに、コードは40行程度
                     head = lines[:60] if f.endswith((".yaml", ".yml", ".json", ".toml")) else lines[:40]
                     content = "".join(head)
             except Exception as e:
                 content = f"[読み込みエラー: {e}]"
 
-            section["files"].append({
-                "name": f,
-                "content": content
-            })
+            section["files"].append({"name": f, "content": content})
         result.append(section)
 
     return result
+
 
 # 🤖 AIでMarkdown生成
 def summarize_with_ai(code_sections, tree_text):
@@ -75,78 +96,82 @@ def summarize_with_ai(code_sections, tree_text):
 次のリポジトリ構造とコード抜粋をもとに、各ディレクトリの概要と主要関数をMarkdownでまとめてください。
 
 # ディレクトリ構造
-
+{tree_text}
 
 # コード抜粋
 {code_sections}
 """
-    res = client.responses.create(model="gpt-4.1-mini", input=prompt, temperature=0.2)
+    res = client.responses.create(
+        model="gpt-4.1-mini",
+        input=prompt,
+        temperature=0.2
+    )
     return res.output[0].content[0].text
+
 
 # 📝 Wiki出力
 def update_wiki(content, platform="local"):
-    """
-    Wikiまたはローカルにドキュメントを出力する。
-    platform:
-      - "gitlab": GitLab Wikiにpush
-      - "github": GitHub Wikiにpush
-      - "local": ローカルにMarkdown出力（デフォルト）
-    """
     today = datetime.now().strftime("%Y-%m-%d")
     header = f"# 📘 Repository Structure Overview\n最終更新日: {today}\n\n---\n"
     filename = "Repository-Structure.md"
 
-    # 出力先切り替え（switch）
     if platform == "gitlab":
         wiki_dir = "wiki"
         wiki_url = (
             f"https://oauth2:{os.environ['GITLAB_TOKEN']}"
             f"@{os.environ['CI_SERVER_HOST']}/{os.environ['CI_PROJECT_PATH']}.wiki.git"
         )
-        os.system(f"git clone {wiki_url} {wiki_dir}")
+        subprocess.run(["git", "clone", wiki_url, wiki_dir], check=True)
         output_path = os.path.join(wiki_dir, filename)
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(header + content)
         os.chdir(wiki_dir)
-        os.system("git config user.name 'ci-bot'")
-        os.system("git config user.email 'ci@example.com'")
-        os.system(f"git add . && git commit -m 'Update repo structure doc ({today})' && git push")
+        subprocess.run(["git", "config", "user.name", "ci-bot"], check=True)
+        subprocess.run(["git", "config", "user.email", "ci@example.com"], check=True)
+        subprocess.run(["git", "add", "."], check=True)
+        subprocess.run(["git", "commit", "-m", f"Update repo structure doc ({today})"], check=True)
+        subprocess.run(["git", "push"], check=True)
         print("✅ GitLab Wikiを更新しました。")
 
     elif platform == "github":
         wiki_dir = "wiki"
-        wiki_url = (
-            f"https://{os.environ['GITHUB_TOKEN']}"
-            f"@github.com/{os.environ['GITHUB_REPOSITORY']}.wiki.git"
-        )
-        os.system(f"git clone {wiki_url} {wiki_dir}")
+        token = os.environ["GITHUB_TOKEN"]
+        repo = os.environ["GITHUB_REPOSITORY"]
+        wiki_url = f"https://x-access-token:{token}@github.com/{repo}.wiki.git"
+
+        subprocess.run(["git", "clone", wiki_url, wiki_dir], check=True)
         output_path = os.path.join(wiki_dir, filename)
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(header + content)
         os.chdir(wiki_dir)
-        os.system("git config user.name 'ci-bot'")
-        os.system("git config user.email 'ci@example.com'")
-        os.system(f"git add . && git commit -m 'Update repo structure doc ({today})' && git push")
+        subprocess.run(["git", "config", "user.name", "ci-bot"], check=True)
+        subprocess.run(["git", "config", "user.email", "ci@example.com"], check=True)
+        subprocess.run(["git", "add", "."], check=True)
+        subprocess.run(["git", "commit", "-m", f"Update repo structure doc ({today})"], check=True)
+        subprocess.run(["git", "push"], check=True)
         print("✅ GitHub Wikiを更新しました。")
 
     else:
-        # Local mode
+        # ローカル出力
         output_path = filename
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(header + content)
         print(f"✅ ローカル出力完了: {output_path}")
 
+
+# 🏃 メイン処理
 def main():
-    platform = os.getenv("CI_PLATFORM", "gitlab")
-    platform = "local"
-    print(f"🚀 {platform}向けドキュメント生成開始")
+    print(f"🚀 {platform} 環境でドキュメント生成を開始")
     tree = build_tree(".")
     tree_text = "\n".join([pre + f.name for pre, _, f in RenderTree(tree)])
     sections = collect_code_info()
-    text_for_ai = "\n".join([f"## {s['path']}\n" + "\n".join([f['name'] for f in s['files']]) for s in sections])
+    text_for_ai = "\n".join(
+        [f"## {s['path']}\n" + "\n".join([f['name'] for f in s['files']]) for s in sections]
+    )
     summary = summarize_with_ai(text_for_ai, tree_text)
     update_wiki(summary, platform)
     print("✅ Wiki更新完了")
+
 
 if __name__ == "__main__":
     main()
