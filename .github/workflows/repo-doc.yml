@@ -1,0 +1,34 @@
+name: Generate Repo Docs
+
+on:
+  schedule:
+    - cron: "0 2 * * *"  # 毎日2時
+  push:
+    branches:
+      - 'feat/merge_script'
+  workflow_dispatch:     # 手動実行も可
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install openai anytree
+
+      - name: Generate docs
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          CI_PLATFORM: github
+        run: python scripts/gen_doc.py
