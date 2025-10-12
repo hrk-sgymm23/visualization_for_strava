@@ -2,7 +2,7 @@ name: Generate Repo Docs
 
 on:
   schedule:
-    - cron: "0 2 * * *"  # 毎日2時
+    - cron: "0 2 * * 1"  # 毎週1回火曜日2時
   push:
     branches:
       - 'feat/merge_scripts'
